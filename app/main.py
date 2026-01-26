@@ -14,6 +14,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title='FlowForge', lifespan=lifespan)
 
+# bearer_scheme = HTTPBearer(description="JWT Authorization header using Bearer token")
+
 app.include_router(project_router)
 app.include_router(task_router)
 app.include_router(auth_router)
