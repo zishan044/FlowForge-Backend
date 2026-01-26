@@ -1,5 +1,5 @@
 from sqlalchemy import String, DateTime, ForeignKey, func
-from sqlalchemy.orm import Mapped, mapped_column, Relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 class Project(Base):
@@ -18,4 +18,4 @@ class Project(Base):
         server_default=func.now(),
     )
 
-    owner = Relationship('User', backref='projects')
+    owner = relationship('User', backref='projects')
