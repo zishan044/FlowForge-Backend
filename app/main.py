@@ -3,6 +3,8 @@ from app.db.session import engine
 from app.db.base import Base
 from contextlib import asynccontextmanager
 
+from app.api.routers import project_router
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print(f"\n🔥 DEBUG: SQLAlchemy is trying to connect to: {engine.url}\n")
@@ -11,6 +13,8 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(title='FlowForge', lifespan=lifespan)
+
+app.include_router(project_router)
 
 @app.get('/health')
 async def health():
