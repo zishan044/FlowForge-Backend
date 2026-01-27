@@ -1,0 +1,78 @@
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from fastapi import Depends, APIRouter, HTTPException, status
+
+from app.schemas.project_invite import ProjectInviteCreate, ProjectInviteRead, ProjectInviteUpdate
+from app.db.session import get_db
+from app.models.user import User
+from app.models.project_invite import ProjectInvite
+from app.api.deps import get_current_user, require_project_admin
+
+router = APIRouter(prefix='/projects', tags=['project_invites'])
+
+@router.post('/{project_id}/invites', response_model=ProjectInviteRead)
+async def send_invite(
+    project_id: int,
+    data: ProjectInviteCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    _ = Depends(require_project_admin)
+):
+    invite = ProjectInvite(
+        project_id=project_id,
+        invited_user_id=data.invited_user_id,
+        invited_by_id=current_user.id,
+    )
+
+    db.add(invite)
+    await db.commit()
+    await db.refresh(invite)
+
+    return invite
+
+@router.get('/{project_id}/invites', response_model=list[ProjectInviteRead])
+async def get_invites_by_project(
+    project_id: int,
+    db: AsyncSession = Depends(get_db),
+    _ = Depends(require_project_admin)
+):
+    query = select(ProjectInvite).where(ProjectInvite.project_id == project_id)
+    result = await db.execute(query)
+    invites = result.scalars().all()
+
+    return invites
+
+
+@router.get('/invites', response_model=list[ProjectInviteRead])
+async def get_invites_by_user(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    query = select(ProjectInvite).where(ProjectInvite.invited_user_id == current_user.id)
+    result = await db.execute(query)
+    invites = result.scalars().all()
+
+    return invites
+
+@router.patch('/invites/{invite_id}', response_model=ProjectInviteRead)
+async def update_invite(
+    invite_id: int,
+    data: ProjectInviteUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    query = select(ProjectInvite).where(ProjectInvite.id == invite_id)
+    result = await db.execute(query)
+    invite = result.scalar_one_or_none()
+
+    if not invite or invite.status != 'pending' or current_user.id != invite.invited_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail='Invalid invite'
+        )
+
+    invite.status = data.status
+    await db.commit()
+    await db.refresh(invite)
+
+    return invite
