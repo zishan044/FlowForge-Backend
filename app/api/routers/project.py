@@ -1,12 +1,15 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete
 
 from app.db.session import get_db
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_project_admin, require_project_owner, require_project_member
 from app.models.project import Project
 from app.models.user import User
+from app.schemas.user import UserRead
+from app.models.project_member import ProjectMember
 from app.schemas.project import ProjectCreate, ProjectRead
+from app.schemas.project_member import ProjectMemberCreate, ProjectMemberRead
 
 router = APIRouter(prefix='/projects', tags=['projects'])
 
@@ -14,7 +17,7 @@ router = APIRouter(prefix='/projects', tags=['projects'])
 async def create_project(
     data: ProjectCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     project = Project(
         name=data.name,
@@ -29,7 +32,74 @@ async def create_project(
 @router.get('/', response_model=list[ProjectRead])
 async def get_projects(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(Project).where(Project.owner_id == current_user.id))
-    return result.scalars().all()
+    query = select(Project).join(ProjectMember, ProjectMember.project_id == Project.id).where(ProjectMember.user_id == current_user.id)
+    result = await db.execute(query)
+    projects = result.scalars().all()
+    return projects
+
+@router.post('/{id}/members', response_model=ProjectMemberRead)
+async def add_member(
+    id: int,
+    data: ProjectMemberCreate,
+    db: AsyncSession = Depends(get_db),
+    _ = Depends(require_project_admin)
+):
+    query = select(ProjectMember).where(ProjectMember.project_id == id, ProjectMember.user_id == data.user_id)
+    result = await db.execute(query)
+    db_member = result.scalar_one_or_none()
+    if db_member:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail='Already a member'
+        )
+
+    member = ProjectMember(
+        project_id = id,
+        user_id = data.user_id,
+        role = data.role
+    )
+
+    db.add(member)
+    await db.commit()
+    await db.refresh(member)
+    return member
+
+@router.delete('/{id}/members/{user_id}')
+async def delete_member(
+    id: int,
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    _ = Depends(require_project_admin)
+):
+    query = select(ProjectMember).where(ProjectMember.project_id == id, ProjectMember.user_id == user_id)
+    result = await db.execute(query)
+    member = result.scalar_one_or_none()
+    if not member:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail='Not a member'
+        )
+    await db.delete(member)
+    await db.commit()
+    return { 'detail': 'member removed' }
+
+@router.get('/{id}/members', response_model=list[ProjectMemberRead])
+async def get_members(
+    id: int,
+    db: AsyncSession = Depends(get_db),
+    _ = Depends(require_project_member)
+):
+    query = select(ProjectMember).where(ProjectMember.project_id == id).join(User, User.id == ProjectMember.user_id)
+    result = await db.execute(query)
+    members = result.scalars().all()
+
+    return [
+        ProjectMemberRead.model_validate({
+            "user_id": m.user_id,
+            "user_info": m.user,
+            "role": m.role
+        })
+        for m in members
+    ]
