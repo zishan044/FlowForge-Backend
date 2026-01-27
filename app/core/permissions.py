@@ -5,9 +5,9 @@ from app.models.project_member import ProjectMember, ProjectRole
 
 
 class PermissionLevel(int, Enum):
-    MEMBER = 1
-    ADMIN = 2
-    OWNER = 3
+    MEMBER = 0
+    ADMIN = 1
+    OWNER = 2
 
 ROLE_LEVEL_MAP = {
     ProjectRole.member: PermissionLevel.MEMBER,

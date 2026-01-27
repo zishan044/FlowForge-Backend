@@ -3,9 +3,7 @@ from typing import Optional
 from passlib.context import CryptContext
 from jose import jwt, JWTError
 
-SECRET_KEY = "your-secret-key" # move to config later
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 # 1 hour
+from app.core.config import settings
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -21,16 +19,21 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     to_encode = data.copy()
 
     if not expires_delta:
-        expires_delta = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        expires_delta = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     
     to_encode.update({
         "exp": datetime.now(timezone.utc) + expires_delta
     })
 
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 def decode_access_token(token: str) -> dict:
     try:
-        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-    except JWTError:
-        raise ValueError("invalid or expired token")
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+
+        if "user_id" not in payload:
+            raise JWTError("Missing user_id")
+        
+        return payload
+    except JWTError as e:
+        raise ValueError("invalid or expired token") from e
