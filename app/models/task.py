@@ -1,8 +1,14 @@
+from enum import Enum as PyEnum
 from sqlalchemy import String, Text, DateTime, Enum, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import datetime
 
 from app.db.base import Base
+
+class TaskStatus(str, PyEnum):
+    todo = 'todo'
+    in_progress = 'in_progress'
+    done = 'done'
 
 class Task(Base):
     __tablename__='tasks'
@@ -10,7 +16,13 @@ class Task(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=True)
-    status: Mapped[str] = mapped_column(Enum('todo', 'in_progress', 'done', name='task_status'), default='todo')
+
+    status: Mapped[TaskStatus] = mapped_column(
+        Enum(TaskStatus, name='task_status'),
+        nullable=False,
+        default=TaskStatus.todo,
+        server_default=TaskStatus.todo.value,
+    )
 
 
     project_id: Mapped[int] = mapped_column(
@@ -34,5 +46,12 @@ class Task(Base):
         onupdate=func.now(),
     )
 
-    project = relationship('Project', backref='tasks')
-    assignee = relationship('User', backref='tasks')
+    project = relationship(
+        'Project', 
+        back_populates='tasks'
+    )
+
+    assignee = relationship(
+        'User', 
+        back_populates='tasks'
+    )

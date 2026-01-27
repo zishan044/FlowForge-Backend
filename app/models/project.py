@@ -1,3 +1,4 @@
+from datetime import datetime
 from sqlalchemy import String, DateTime, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -14,7 +15,7 @@ class Project(Base):
         nullable=False
     )
 
-    created_at: Mapped[str] = mapped_column(
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
     )
@@ -26,6 +27,18 @@ class Project(Base):
 
     members = relationship(
         'ProjectMember',  
+        back_populates='project',
+        cascade='all, delete-orphan'
+    )
+
+    invites = relationship(
+        'ProjectInvite',
+        back_populates='project',
+        cascade='all, delete-orphan'
+    )
+
+    tasks = relationship(
+        "Task",
         back_populates='project',
         cascade='all, delete-orphan'
     )

@@ -18,11 +18,29 @@ class User(Base):
     owned_projects = relationship(
         'Project',
         back_populates='owner',
-        cascade='all, delete'
+        cascade='all, delete-orphan'
     )
 
     project_members = relationship(
         'ProjectMember',
         back_populates='user',
         cascade='all, delete-orphan'
+    )
+
+    sent_invites = relationship(
+        'ProjectInvite',
+        back_populates='invited_by',
+        cascade='all, delete-orphan'
+    )
+
+    received_invites = relationship(
+        'ProjectInvite',
+        back_populates='invited_user',
+        cascade='all, delete-orphan'
+    )
+
+    tasks = relationship(
+        "Task",
+        back_populates='assignee',
+        cascade="all, delete-orphan"
     )

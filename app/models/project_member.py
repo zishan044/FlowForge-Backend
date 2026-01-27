@@ -1,5 +1,4 @@
 from enum import Enum as PyEnum
-
 from sqlalchemy import ForeignKey, Enum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -26,7 +25,8 @@ class ProjectMember(Base):
     role: Mapped[ProjectRole] = mapped_column(
         Enum(ProjectRole, name='project_role'),
         nullable=False,
-        default=ProjectRole.member
+        default=ProjectRole.member,
+        server_default=ProjectRole.member.value
     )
 
     user = relationship("User", back_populates='project_members')
