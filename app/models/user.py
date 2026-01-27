@@ -1,5 +1,5 @@
 from sqlalchemy import String, Boolean, DateTime, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 class User(Base):
@@ -9,7 +9,20 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), index=True, unique=True, nullable=False)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
     created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
+    )
+
+    owned_projects = relationship(
+        'Project',
+        back_populates='owner',
+        cascade='all, delete'
+    )
+
+    project_members = relationship(
+        'ProjectMember',
+        back_populates='user',
+        cascade='all, delete-orphan'
     )

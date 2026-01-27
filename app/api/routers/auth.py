@@ -16,10 +16,6 @@ async def signup(
     data: UserCreate,
     db: AsyncSession = Depends(get_db)
 ):
-    
-    print("password:", data.password)
-    print("len(password):", len(data.password))
-    print("len(bytes):", len(data.password.encode("utf-8")))
 
     user = User(
         email=data.email,

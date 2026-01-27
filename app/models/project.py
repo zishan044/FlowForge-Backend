@@ -1,5 +1,6 @@
 from sqlalchemy import String, DateTime, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.db.base import Base
 
 class Project(Base):
@@ -18,4 +19,13 @@ class Project(Base):
         server_default=func.now(),
     )
 
-    owner = relationship('User', backref='projects')
+    owner = relationship(
+        'User',
+        back_populates='owned_projects',
+    )
+
+    members = relationship(
+        'ProjectMember',  
+        back_populates='project',
+        cascade='all, delete-orphan'
+    )
