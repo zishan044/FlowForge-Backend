@@ -9,7 +9,7 @@ from app.models.project_member import ProjectMember
 from app.core.security import decode_access_token
 from app.core.permissions import is_project_member, is_project_admin, is_project_owner
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login/")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
 async def get_current_user(
@@ -24,7 +24,7 @@ async def get_current_user(
             detail="Invalid credentials"
         )
 
-    user_id = payload.get("sub")
+    user_id = payload.get("user_id")
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -50,7 +50,7 @@ async def get_current_user(
 
 async def get_project_member(
     project_id: int,
-    current_user: User,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ProjectMember | None:
     query = select(ProjectMember).where(ProjectMember.user_id == current_user.id, ProjectMember.project_id == project_id)
@@ -60,10 +60,8 @@ async def get_project_member(
 
 async def require_project_member(
     project_id: int,
-    current_user: User,
-    db: AsyncSession = Depends(get_db),
+    member: ProjectMember = Depends(get_project_member),
 ) -> ProjectMember:
-    member = await get_project_member(project_id, current_user, db)
     if not is_project_member(member):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -74,10 +72,8 @@ async def require_project_member(
 
 async def require_project_admin(
     project_id: int,
-    current_user: User,
-    db: AsyncSession = Depends(get_db),
+    member: ProjectMember = Depends(require_project_member),
 ) -> ProjectMember:
-    member = await get_project_member(project_id, current_user, db)
     if not is_project_admin(member):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -88,10 +84,8 @@ async def require_project_admin(
 
 async def require_project_owner(
     project_id: int,
-    current_user: User,
-    db: AsyncSession = Depends(get_db),
+    member: ProjectMember = Depends(require_project_member)
 ) -> ProjectMember:
-    member = await get_project_member(project_id, current_user, db)
     if not is_project_owner(member):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
