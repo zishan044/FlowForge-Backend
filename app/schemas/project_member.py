@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from app.models.project_member import ProjectRole
 from app.schemas.user import UserRead
 
@@ -9,8 +9,8 @@ class ProjectMemberCreate(BaseModel):
 
 
 class ProjectMemberRead(BaseModel):
-    user_id: int
-    user_info: UserRead
-    role: ProjectRole
+    model_config = ConfigDict(from_attributes=True)
 
-    model_config = { "from_attributes": True }
+    user_id: int
+    user: UserRead
+    role: ProjectRole
