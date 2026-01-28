@@ -30,13 +30,15 @@ class User(Base):
     sent_invites = relationship(
         'ProjectInvite',
         back_populates='invited_by',
-        cascade='all, delete-orphan'
+        cascade='all, delete-orphan',
+        foreign_keys='ProjectInvite.invited_by_id'
     )
 
     received_invites = relationship(
         'ProjectInvite',
         back_populates='invited_user',
-        cascade='all, delete-orphan'
+        cascade='all, delete-orphan',
+        foreign_keys='ProjectInvite.invited_user_id'
     )
 
     tasks = relationship(

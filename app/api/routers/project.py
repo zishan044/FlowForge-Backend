@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from app.db.session import get_db
 from app.api.deps import get_current_user, require_project_admin, require_project_owner, require_project_member
@@ -38,6 +39,18 @@ async def create_project(
     await db.commit()
     await db.refresh(owner_member)
 
+    query = (
+        select(Project)
+        .options(
+            selectinload(Project.members),
+            selectinload(Project.tasks),
+            selectinload(Project.invites)
+        )
+        .where(Project.id == project.id)
+    )
+    result = await db.execute(query)
+    project = result.scalar_one()
+
     return project
 
 @router.get('/', response_model=list[ProjectRead])
@@ -45,7 +58,11 @@ async def get_projects(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    query = select(Project).join(ProjectMember, ProjectMember.project_id == Project.id).where(ProjectMember.user_id == current_user.id)
+    query = select(Project).options(
+        selectinload(Project.members),
+        selectinload(Project.tasks),
+        selectinload(Project.invites)
+    ).join(ProjectMember, ProjectMember.project_id == Project.id).where(ProjectMember.user_id == current_user.id)
     result = await db.execute(query)
     projects = result.scalars().all()
     return projects
@@ -60,6 +77,7 @@ async def add_member(
     query = select(ProjectMember).where(ProjectMember.project_id == project_id, ProjectMember.user_id == data.user_id)
     result = await db.execute(query)
     db_member = result.scalar_one_or_none()
+
     if db_member:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -72,9 +90,12 @@ async def add_member(
         role = data.role
     )
 
-    db.add(member)
-    await db.commit()
-    await db.refresh(member)
+    result = await db.execute(
+        select(ProjectMember)
+        .options(selectinload(ProjectMember.user))
+        .where(ProjectMember.user_id == data.user_id, ProjectMember.project_id == project_id)
+    )
+    member = result.scalar_one()
     return member
 
 @router.delete('/{project_id}/members/{user_id}')
