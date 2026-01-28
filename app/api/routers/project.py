@@ -7,7 +7,7 @@ from app.api.deps import get_current_user, require_project_admin, require_projec
 from app.models.project import Project
 from app.models.user import User
 from app.schemas.user import UserRead
-from app.models.project_member import ProjectMember
+from app.models.project_member import ProjectMember, ProjectRole
 from app.schemas.project import ProjectCreate, ProjectRead
 from app.schemas.project_member import ProjectMemberCreate, ProjectMemberRead
 
@@ -27,6 +27,17 @@ async def create_project(
     db.add(project)
     await db.commit()
     await db.refresh(project)
+
+    owner_member = ProjectMember(
+        project_id=project.id,
+        user_id=current_user.id,
+        role=ProjectRole.owner
+    )
+
+    db.add(owner_member)
+    await db.commit()
+    await db.refresh(owner_member)
+
     return project
 
 @router.get('/', response_model=list[ProjectRead])
@@ -39,14 +50,14 @@ async def get_projects(
     projects = result.scalars().all()
     return projects
 
-@router.post('/{id}/members', response_model=ProjectMemberRead)
+@router.post('/{project_id}/members', response_model=ProjectMemberRead)
 async def add_member(
-    id: int,
+    project_id: int,
     data: ProjectMemberCreate,
     db: AsyncSession = Depends(get_db),
     _ = Depends(require_project_admin)
 ):
-    query = select(ProjectMember).where(ProjectMember.project_id == id, ProjectMember.user_id == data.user_id)
+    query = select(ProjectMember).where(ProjectMember.project_id == project_id, ProjectMember.user_id == data.user_id)
     result = await db.execute(query)
     db_member = result.scalar_one_or_none()
     if db_member:
@@ -56,7 +67,7 @@ async def add_member(
         )
 
     member = ProjectMember(
-        project_id = id,
+        project_id = project_id,
         user_id = data.user_id,
         role = data.role
     )
@@ -66,14 +77,14 @@ async def add_member(
     await db.refresh(member)
     return member
 
-@router.delete('/{id}/members/{user_id}')
+@router.delete('/{project_id}/members/{user_id}')
 async def delete_member(
-    id: int,
+    project_id: int,
     user_id: int,
     db: AsyncSession = Depends(get_db),
     _ = Depends(require_project_admin)
 ):
-    query = select(ProjectMember).where(ProjectMember.project_id == id, ProjectMember.user_id == user_id)
+    query = select(ProjectMember).where(ProjectMember.project_id == project_id, ProjectMember.user_id == user_id)
     result = await db.execute(query)
     member = result.scalar_one_or_none()
     if not member:
@@ -81,17 +92,24 @@ async def delete_member(
             status_code=status.HTTP_404_NOT_FOUND,
             detail='Not a member'
         )
+    
+    if member.role == ProjectRole.owner:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail='Cannot remove project owner'
+        )
+    
     await db.delete(member)
     await db.commit()
     return { 'detail': 'member removed' }
 
-@router.get('/{id}/members', response_model=list[ProjectMemberRead])
+@router.get('/{project_id}/members', response_model=list[ProjectMemberRead])
 async def get_members(
-    id: int,
+    project_id: int,
     db: AsyncSession = Depends(get_db),
     _ = Depends(require_project_member)
 ):
-    query = select(ProjectMember).where(ProjectMember.project_id == id).join(User, User.id == ProjectMember.user_id)
+    query = select(ProjectMember).where(ProjectMember.project_id == project_id).join(User, User.id == ProjectMember.user_id)
     result = await db.execute(query)
     members = result.scalars().all()
 

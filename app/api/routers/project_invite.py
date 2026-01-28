@@ -6,6 +6,7 @@ from app.schemas.project_invite import ProjectInviteCreate, ProjectInviteRead, P
 from app.db.session import get_db
 from app.models.user import User
 from app.models.project_invite import ProjectInvite
+from app.models.project_member import ProjectMember
 from app.api.deps import get_current_user, require_project_admin
 
 router = APIRouter(prefix='/projects', tags=['project_invites'])
@@ -18,6 +19,26 @@ async def send_invite(
     db: AsyncSession = Depends(get_db),
     _ = Depends(require_project_admin)
 ):
+    existing = await db.execute(
+        select(ProjectInvite).where(
+            ProjectInvite.project_id == project_id,
+            ProjectInvite.invited_user_id == data.invited_user_id,
+            ProjectInvite.status == 'pending'
+        )
+    )
+
+    if existing.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail='User already invited'
+        )
+    
+    if data.invited_user_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail='You cannot invite yourself'
+        )
+    
     invite = ProjectInvite(
         project_id=project_id,
         invited_user_id=data.invited_user_id,
@@ -70,6 +91,14 @@ async def update_invite(
             status_code=status.HTTP_403_FORBIDDEN,
             detail='Invalid invite'
         )
+    
+    if data.status == 'accepted':
+        member = ProjectMember(
+            project_id=invite.project_id,
+            user_id=current_user.id,
+            role='member'
+        )
+        db.add(member)
 
     invite.status = data.status
     await db.commit()

@@ -11,7 +11,7 @@ from app.core.security import hash_password, verify_password, create_access_toke
 
 router = APIRouter(prefix='/auth', tags=['auth'])
 
-@router.post("/signup/", response_model=UserRead)
+@router.post("/signup", response_model=UserRead)
 async def signup(
     data: UserCreate,
     db: AsyncSession = Depends(get_db)
@@ -35,7 +35,7 @@ async def signup(
 
     return user
 
-@router.post("/login/", response_model=Token)
+@router.post("/login", response_model=Token)
 async def login(
     data: UserCreate,
     db: AsyncSession = Depends(get_db)
@@ -50,7 +50,7 @@ async def login(
         )
 
     token = create_access_token({
-        "sub": str(db_user.id),
+        "user_id": str(db_user.id),
         "email": db_user.email
     })
 
