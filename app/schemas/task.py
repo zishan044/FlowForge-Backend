@@ -7,7 +7,6 @@ class TaskCreate(BaseModel):
     title: str
     description: str | None = None
     status: TaskStatus | None = TaskStatus.todo
-    project_id: int
     assignee_id: int | None = None
 
 class TaskRead(BaseModel):
