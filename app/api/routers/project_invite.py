@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from fastapi import Depends, APIRouter, HTTPException, status
 
 from app.schemas.project_invite import ProjectInviteCreate, ProjectInviteRead, ProjectInviteUpdate
@@ -47,8 +48,17 @@ async def send_invite(
 
     db.add(invite)
     await db.commit()
-    await db.refresh(invite)
 
+    query = (
+        select(ProjectInvite)
+        .options(
+            selectinload(ProjectInvite.invited_user),
+            selectinload(ProjectInvite.invited_by)
+        )
+        .where(ProjectInvite.id == invite.id)
+    )
+    result = await db.execute(query)
+    invite = result.scalar_one()
     return invite
 
 @router.get('/{project_id}/invites', response_model=list[ProjectInviteRead])
@@ -57,7 +67,14 @@ async def get_invites_by_project(
     db: AsyncSession = Depends(get_db),
     _ = Depends(require_project_admin)
 ):
-    query = select(ProjectInvite).where(ProjectInvite.project_id == project_id)
+    query = (
+        select(ProjectInvite)
+        .options(
+            selectinload(ProjectInvite.invited_user),
+            selectinload(ProjectInvite.invited_by)
+        )
+        .where(ProjectInvite.project_id == project_id)
+    )
     result = await db.execute(query)
     invites = result.scalars().all()
 
@@ -69,7 +86,14 @@ async def get_invites_by_user(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    query = select(ProjectInvite).where(ProjectInvite.invited_user_id == current_user.id)
+    query = (
+        select(ProjectInvite)
+        .options(
+            selectinload(ProjectInvite.invited_user),
+            selectinload(ProjectInvite.invited_by)
+        )
+        .where(ProjectInvite.project_id == current_user.id)
+    )
     result = await db.execute(query)
     invites = result.scalars().all()
 
@@ -82,7 +106,14 @@ async def update_invite(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    query = select(ProjectInvite).where(ProjectInvite.id == invite_id)
+    query = (
+        select(ProjectInvite)
+        .options(
+            selectinload(ProjectInvite.invited_user),
+            selectinload(ProjectInvite.invited_by)
+        )
+        .where(ProjectInvite.id == invite_id)
+    )
     result = await db.execute(query)
     invite = result.scalar_one_or_none()
 
@@ -102,6 +133,15 @@ async def update_invite(
 
     invite.status = data.status
     await db.commit()
-    await db.refresh(invite)
 
+    query = (
+        select(ProjectInvite)
+        .options(
+            selectinload(ProjectInvite.invited_user),
+            selectinload(ProjectInvite.invited_by)
+        )
+        .where(ProjectInvite.id == invite.id)
+    )
+    result = await db.execute(query)
+    invite = result.scalar_one()
     return invite

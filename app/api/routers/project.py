@@ -132,15 +132,12 @@ async def get_members(
     db: AsyncSession = Depends(get_db),
     _ = Depends(require_project_member)
 ):
-    query = select(ProjectMember).where(ProjectMember.project_id == project_id).join(User, User.id == ProjectMember.user_id)
+    query = (
+        select(ProjectMember)
+        .options(selectinload(ProjectMember.user))
+        .where(ProjectMember.project_id == project_id)
+    )
     result = await db.execute(query)
     members = result.scalars().all()
 
-    return [
-        ProjectMemberRead.model_validate({
-            "user_id": m.user_id,
-            "user_info": m.user,
-            "role": m.role
-        })
-        for m in members
-    ]
+    return members
