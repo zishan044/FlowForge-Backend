@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.db.session import get_db
-from app.api.deps import get_current_user, require_project_admin, require_project_owner, require_project_member
+from app.api.deps import get_current_user, require_project_admin, require_project_member
 from app.models.project import Project
 from app.models.user import User
 from app.schemas.user import UserRead
@@ -89,6 +89,8 @@ async def add_member(
         user_id = data.user_id,
         role = data.role
     )
+    db.add(member)
+    await db.commit()
 
     result = await db.execute(
         select(ProjectMember)

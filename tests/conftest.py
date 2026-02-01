@@ -8,7 +8,7 @@ from app.db.base import Base
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
 engine = create_async_engine(TEST_DATABASE_URL)
-TestingSessionLocal = async_sessionmaker(autocommit=False, autoflush=False, bind=engine, class_=AsyncSession)
+TestingSessionLocal = async_sessionmaker(expire_on_commit=False ,autocommit=False, autoflush=False, bind=engine, class_=AsyncSession)
 
 @pytest.fixture(autouse=True)
 async def setup_db():
@@ -36,3 +36,13 @@ async def client(db_session):
         yield ac
 
     app.dependency_overrides.clear()
+
+@pytest.fixture
+async def auth_headers(client):
+    email = "test@example.com"
+    password = "password123"
+    await client.post("/auth/signup", json={"email": email, "password": password})
+    
+    response = await client.post("/auth/login", json={"email": email, "password": password})
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
