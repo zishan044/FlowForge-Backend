@@ -2,12 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
+import json
 
+from app.core.redis import get_cache, set_cache, delete_cache
 from app.db.session import get_db
 from app.api.deps import get_current_user, require_project_admin, require_project_member
 from app.models.project import Project
 from app.models.user import User
-from app.schemas.user import UserRead
 from app.models.project_member import ProjectMember, ProjectRole
 from app.schemas.project import ProjectCreate, ProjectRead
 from app.schemas.project_member import ProjectMemberCreate, ProjectMemberRead
@@ -51,6 +52,8 @@ async def create_project(
     result = await db.execute(query)
     project = result.scalar_one()
 
+    await delete_cache(f"projects:user:{current_user.id}")
+
     return project
 
 @router.get('/', response_model=list[ProjectRead])
@@ -58,6 +61,11 @@ async def get_projects(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    cache_key = f"projects:user:{current_user.id}"
+    cached = await get_cache(cache_key)
+    if cached:
+        return json.loads(cached)
+
     query = select(Project).options(
         selectinload(Project.members),
         selectinload(Project.tasks),
@@ -65,7 +73,11 @@ async def get_projects(
     ).join(ProjectMember, ProjectMember.project_id == Project.id).where(ProjectMember.user_id == current_user.id)
     result = await db.execute(query)
     projects = result.scalars().all()
-    return projects
+
+    projects_out = [ProjectRead.model_validate(p) for p in projects]
+    await set_cache(cache_key, [p.model_dump() for p in projects_out])
+
+    return projects_out
 
 @router.post('/{project_id}/members', response_model=ProjectMemberRead)
 async def add_member(
@@ -98,6 +110,10 @@ async def add_member(
         .where(ProjectMember.user_id == data.user_id, ProjectMember.project_id == project_id)
     )
     member = result.scalar_one()
+
+    await delete_cache(f"projects:user:{member.user_id}")
+    await delete_cache(f"members:project:{project_id}")
+
     return member
 
 @router.delete('/{project_id}/members/{user_id}')
@@ -124,6 +140,10 @@ async def delete_member(
     
     await db.delete(member)
     await db.commit()
+
+    await delete_cache(f"projects:user:{member.user_id}")
+    await delete_cache(f"members:project:{project_id}")
+
     return { 'detail': 'member removed' }
 
 @router.get('/{project_id}/members', response_model=list[ProjectMemberRead])
@@ -132,6 +152,12 @@ async def get_members(
     db: AsyncSession = Depends(get_db),
     _ = Depends(require_project_member)
 ):
+    
+    cache_key = f"members:project:{project_id}"
+    cached = await get_cache(cache_key)
+    if cached:
+        return json.loads(cached)
+
     query = (
         select(ProjectMember)
         .options(selectinload(ProjectMember.user))
@@ -140,4 +166,7 @@ async def get_members(
     result = await db.execute(query)
     members = result.scalars().all()
 
-    return members
+    members_out = [ProjectMemberRead.model_validate(m) for m in members]
+    await set_cache(cache_key, [m.model_dump() for m in members_out])
+
+    return members_out

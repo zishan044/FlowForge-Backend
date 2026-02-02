@@ -2,8 +2,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from fastapi import Depends, APIRouter, HTTPException, status
+import json
 
 from app.schemas.project_invite import ProjectInviteCreate, ProjectInviteRead, ProjectInviteUpdate
+from app.core.redis import get_cache, set_cache, delete_cache
 from app.db.session import get_db
 from app.models.user import User
 from app.models.project_invite import ProjectInvite
@@ -59,6 +61,9 @@ async def send_invite(
     )
     result = await db.execute(query)
     invite = result.scalar_one()
+
+    await delete_cache(f"invites:user:{data.invited_user_id}")
+
     return invite
 
 @router.get('/{project_id}/invites', response_model=list[ProjectInviteRead])
@@ -86,18 +91,26 @@ async def get_invites_by_user(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
+    cache_key = f"invites:user:{current_user.id}"
+    cached = await get_cache(cache_key)
+    if cached:
+        return json.loads(cached)
+    
     query = (
         select(ProjectInvite)
         .options(
             selectinload(ProjectInvite.invited_user),
             selectinload(ProjectInvite.invited_by)
         )
-        .where(ProjectInvite.project_id == current_user.id)
+        .where(ProjectInvite.invited_user_id == current_user.id)
     )
     result = await db.execute(query)
     invites = result.scalars().all()
 
-    return invites
+    invites_out = [ProjectInviteRead.model_validate(i) for i in invites]
+    await set_cache(cache_key, [i.model_dump() for i in invites_out])
+    
+    return invites_out
 
 @router.patch('/invites/{invite_id}', response_model=ProjectInviteRead)
 async def update_invite(
@@ -144,4 +157,7 @@ async def update_invite(
     )
     result = await db.execute(query)
     invite = result.scalar_one()
+
+    await delete_cache(f"invites:user:{current_user.id}")
+
     return invite

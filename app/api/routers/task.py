@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+import json
 
+from app.core.redis import get_cache, set_cache, delete_cache
 from app.db.session import get_db
 from app.api.deps import require_project_member
 from app.models.task import Task
@@ -28,6 +30,9 @@ async def create_task(
     db.add(task)
     await db.commit()
     await db.refresh(task)
+
+    await delete_cache(f"tasks:project:{project_id}")
+    
     return task
 
 @router.get('/{project_id}', response_model=list[TaskRead])
@@ -36,9 +41,25 @@ async def get_tasks(
     db: AsyncSession = Depends(get_db),
     _: ProjectMember = Depends(require_project_member),
 ):
+    cache_key = f"tasks:project:{project_id}"
+
+    cached = await get_cache(cache_key)
+    if cached:
+        return json.loads(cached)
+    
     result = await db.execute(
         select(Task)
         .where(Task.project_id == project_id)
         .order_by(Task.created_at.desc())
     )
-    return result.scalars().all()
+    tasks = result.scalars().all()
+
+    tasks_out = [TaskRead.model_validate(t) for t in tasks]
+
+    await set_cache(
+        cache_key,
+        [t.model_dump() for t in tasks_out],
+        ttl=60
+    )
+
+    return tasks_out
