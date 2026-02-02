@@ -1,10 +1,11 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from fastapi import Depends, APIRouter, HTTPException, status
+from fastapi import Depends, APIRouter, HTTPException, status, BackgroundTasks
 import json
 
 from app.schemas.project_invite import ProjectInviteCreate, ProjectInviteRead, ProjectInviteUpdate
+from app.services.email import send_invite_email
 from app.core.redis import get_cache, set_cache, delete_cache
 from app.db.session import get_db
 from app.models.user import User
@@ -18,6 +19,7 @@ router = APIRouter(prefix='/projects', tags=['project_invites'])
 async def send_invite(
     project_id: int,
     data: ProjectInviteCreate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     _ = Depends(require_project_admin)
@@ -63,6 +65,13 @@ async def send_invite(
     invite = result.scalar_one()
 
     await delete_cache(f"invites:user:{data.invited_user_id}")
+
+    background_tasks.add_task(
+        send_invite_email,
+        to_email=invite.invited_user.email,
+        project_name=invite.project.name,
+        invited_by=current_user.email,
+    )
 
     return invite
 

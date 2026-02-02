@@ -3,16 +3,15 @@ from fastapi import FastAPI
 
 from app.api.routers import project_router, task_router, auth_router, project_invite_router
 from app.core.redis import init_redis, close_redis
+from app.core.logging import setup_logging
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-
-    print("Connecting to Redis...")
     await init_redis()
+    setup_logging()
     
     yield
     
-    print("Closing Redis connection...")
     await close_redis()
 
 app = FastAPI(title='FlowForge', lifespan=lifespan)
