@@ -15,6 +15,11 @@ class Project(Base):
         nullable=False
     )
 
+    whiteboard_id: Mapped[int] = mapped_column(
+        ForeignKey("whiteboards.id", ondelete='CASCADE'),
+        nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -39,6 +44,12 @@ class Project(Base):
 
     tasks = relationship(
         "Task",
+        back_populates='project',
+        cascade='all, delete-orphan'
+    )
+
+    whiteboard = relationship(
+        'WhiteBoard',
         back_populates='project',
         cascade='all, delete-orphan'
     )
