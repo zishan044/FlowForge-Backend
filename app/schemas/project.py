@@ -8,6 +8,9 @@ from app.schemas.task import TaskRead
 class ProjectCreate(BaseModel):
     name: str
 
+class ProjectUpdate(BaseModel):
+    name: str | None = None
+
 class ProjectRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

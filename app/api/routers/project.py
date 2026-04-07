@@ -10,7 +10,7 @@ from app.api.deps import get_current_user, require_project_admin, require_projec
 from app.models.project import Project
 from app.models.user import User
 from app.models.project_member import ProjectMember, ProjectRole
-from app.schemas.project import ProjectCreate, ProjectRead
+from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectRead
 from app.schemas.project_member import ProjectMemberCreate, ProjectMemberRead
 
 router = APIRouter(prefix='/projects', tags=['projects'])
@@ -170,3 +170,56 @@ async def get_members(
     await set_cache(cache_key, [m.model_dump() for m in members_out])
 
     return members_out
+
+@router.put("/{project_id}", response_model=ProjectRead)
+async def update_project(
+    project_id: int,
+    data: ProjectUpdate,
+    db: AsyncSession = Depends(get_db),
+    _ = Depends(require_project_admin)
+):
+    query = select(Project).options(
+        selectinload(Project.members),
+        selectinload(Project.tasks),
+        selectinload(Project.invites)
+    ).where(Project.id == project_id)
+
+    result = await db.execute(query)
+    project = result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    if data.name is not None:
+        project.name = data.name
+
+    await db.commit()
+    await db.refresh(project)
+
+    for member in project.members:
+        await delete_cache(f"projects:user:{member.user_id}")
+    await delete_cache(f"members:project:{project_id}")
+
+    return project
+
+@router.delete("/{project_id}")
+async def delete_project(
+    project_id: int,
+    db: AsyncSession = Depends(get_db),
+    _ = Depends(require_project_admin)
+):
+    query = select(Project).options(selectinload(Project.members)).where(Project.id == project_id)
+    result = await db.execute(query)
+    project = result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    member_ids = [member.user_id for member in project.members]
+
+    await db.delete(project)
+    await db.commit()
+
+    for user_id in member_ids:
+        await delete_cache(f"projects:user:{user_id}")
+    await delete_cache(f"members:project:{project_id}")
+
+    return {"detail": "project deleted"}
