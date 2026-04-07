@@ -9,6 +9,12 @@ class TaskCreate(BaseModel):
     status: TaskStatus | None = TaskStatus.todo
     assignee_id: int | None = None
 
+class TaskUpdate(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    status: TaskStatus | None = None
+    assignee_id: int | None = None
+
 class TaskRead(BaseModel):
     model_config=ConfigDict(from_attributes=True)
 
