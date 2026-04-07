@@ -1,11 +1,14 @@
+from typing import Annotated
 from uuid import uuid4
 
 from app.models.pasword_reset_token import PasswordResetToken
+from app.models.refresh_token import RefreshToken
 from app.schemas.password_reset_tokens import PasswordResetConfirm, PasswordResetRequest
-from fastapi import APIRouter, Depends, HTTPException, status
+from app.schemas.refresh_token import TokenRefreshRequest, TokenRefreshResponse
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Cookie, JsonResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import select
+from sqlalchemy import select, delete
 
 from app.db.session import get_db
 from app.models.user import User
@@ -42,6 +45,7 @@ async def signup(
 @router.post("/login", response_model=Token)
 async def login(
     data: UserCreate,
+    response: Response,
     db: AsyncSession = Depends(get_db)
 ):
     result = await db.execute(select(User).where(User.email == data.email))
@@ -57,6 +61,14 @@ async def login(
         "user_id": str(db_user.id),
         "email": db_user.email
     })
+
+    refresh_token_str = str(uuid4())
+    refresh_token = RefreshToken(user_id=db_user.id, token=refresh_token_str)
+
+    db.add(refresh_token)
+    await db.commit()
+
+    response.set_cookie(key="refresh_token", value=refresh_token_str, httponly=True, samesite="lax", secure=False, max_age=7*24*3600)
 
     return {
         'access_token': token,
@@ -93,3 +105,30 @@ async def password_reset_confirm(data: PasswordResetConfirm, db: AsyncSession = 
     await db.commit()
 
     return {"detail": "Password has been reset successfully"}
+
+@router.post("/refresh", response_model=TokenRefreshResponse)
+async def refresh_token(refresh_token: Annotated[str | None, Cookie()], db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(RefreshToken).where(RefreshToken.token == refresh_token))
+    token = result.scalar_one_or_none()
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
+
+    access_token = create_access_token({
+        "user_id": str(token.user_id)
+    })
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer"
+    }
+
+@router.post("/logout")
+async def logout(refresh_token: Annotated[str | None, Cookie()], db: AsyncSession = Depends(get_db)):
+
+    if refresh_token:
+        await db.execute(delete(RefreshToken).where(RefreshToken.token == refresh_token))
+        await db.commit()
+        
+    response = JsonResponse(content={"detail": "Logged out successfully"})
+    response.delete_cookie(key="refresh_token")
+    return response
