@@ -9,7 +9,7 @@ from app.services.email import send_invite_email
 from app.core.redis import get_cache, set_cache, delete_cache
 from app.db.session import get_db
 from app.models.user import User
-from app.models.project_invite import ProjectInvite
+from app.models.project_invite import ProjectInvite, InvitationStatus
 from app.models.project_member import ProjectMember
 from app.api.deps import get_current_user, require_project_admin
 
@@ -128,7 +128,7 @@ async def update_invite(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    query = (
+    result = await db.execute(
         select(ProjectInvite)
         .options(
             selectinload(ProjectInvite.invited_user),
@@ -136,37 +136,30 @@ async def update_invite(
         )
         .where(ProjectInvite.id == invite_id)
     )
-    result = await db.execute(query)
     invite = result.scalar_one_or_none()
+    if not invite or invite.status != InvitationStatus.pending or current_user.id != invite.invited_user_id:
+        raise HTTPException(status_code=403, detail='Invalid invite')
 
-    if not invite or invite.status != 'pending' or current_user.id != invite.invited_user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail='Invalid invite'
+
+    if data.status == InvitationStatus.accepted:
+        existing_member = await db.execute(
+            select(ProjectMember).where(
+                ProjectMember.project_id == invite.project_id,
+                ProjectMember.user_id == current_user.id
+            )
         )
-    
-    if data.status == 'accepted':
-        member = ProjectMember(
-            project_id=invite.project_id,
-            user_id=current_user.id,
-            role='member'
-        )
-        db.add(member)
+        if not existing_member.scalar_one_or_none():
+            db.add(ProjectMember(
+                project_id=invite.project_id,
+                user_id=current_user.id,
+                role='member'
+            ))
 
     invite.status = data.status
     await db.commit()
-
-    query = (
-        select(ProjectInvite)
-        .options(
-            selectinload(ProjectInvite.invited_user),
-            selectinload(ProjectInvite.invited_by)
-        )
-        .where(ProjectInvite.id == invite.id)
-    )
-    result = await db.execute(query)
-    invite = result.scalar_one()
+    await db.refresh(invite)
 
     await delete_cache(f"invites:user:{current_user.id}")
+    await delete_cache(f"members:project:{invite.project_id}")
 
     return invite
